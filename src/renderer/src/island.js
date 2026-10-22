@@ -1,3 +1,5 @@
+import '@fontsource-variable/figtree'
+import './assets/island.css'
 import './assets/island.css'
 
 const PAUSE_ICON =

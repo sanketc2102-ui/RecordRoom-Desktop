@@ -18,10 +18,12 @@ let filePath = null
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 900,
-    height: 640,
-    minWidth: 760,
-    minHeight: 560,
+    width: 1040,
+    height: 720,
+    minWidth: 880,
+    minHeight: 620,
+    title: 'RecordRoom',
+    backgroundColor: '#F6F6F6',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

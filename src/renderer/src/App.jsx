@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import './assets/preview.css'
 import { OUT_W, OUT_H, createCanvasStream, screenConstraints } from './capture'
 
 const AUTO_START = true // true: record as soon as both permissions are allowed. false: show a Start button.
@@ -9,6 +8,178 @@ const fmt = (s) =>
     .map((n) => String(n).padStart(2, '0'))
     .join(':')
 
+const fileName = (p) => (p || '').split(/[\\/]/).pop()
+
+/* ------------------------------------------------------------------ */
+/* Icons                                                               */
+/* ------------------------------------------------------------------ */
+const Icon = ({ children, size = 24, ...rest }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    {...rest}
+  >
+    {children}
+  </svg>
+)
+const MicIcon = (p) => (
+  <Icon {...p}>
+    <rect x="9" y="3" width="6" height="12" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </Icon>
+)
+const ScreenIcon = (p) => (
+  <Icon {...p}>
+    <rect x="3" y="4" width="18" height="12" rx="2.5" />
+    <path d="M8 20h8M12 16v4" />
+  </Icon>
+)
+const CheckIcon = (p) => (
+  <Icon {...p}>
+    <path d="M20 6 9 17l-5-5" />
+  </Icon>
+)
+const PauseIcon = (p) => (
+  <Icon {...p} fill="currentColor" stroke="none">
+    <rect x="6" y="4" width="4" height="16" rx="1.5" />
+    <rect x="14" y="4" width="4" height="16" rx="1.5" />
+  </Icon>
+)
+const PlayIcon = (p) => (
+  <Icon {...p} fill="currentColor" stroke="none">
+    <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z" />
+  </Icon>
+)
+const StopIcon = (p) => (
+  <Icon {...p} fill="currentColor" stroke="none">
+    <rect x="5" y="5" width="14" height="14" rx="3.5" />
+  </Icon>
+)
+const RecordIcon = (p) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none" />
+  </Icon>
+)
+const FolderIcon = (p) => (
+  <Icon {...p}>
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+  </Icon>
+)
+
+/* ------------------------------------------------------------------ */
+/* Small components                                                    */
+/* ------------------------------------------------------------------ */
+
+// Fixed-width digits so the clock never jitters as numbers change
+function Clock({ seconds, paused }) {
+  return (
+    <div
+      className={`clock ${paused ? 'is-paused' : ''}`}
+      role="timer"
+      aria-label={`Elapsed time ${fmt(seconds)}`}
+    >
+      {fmt(seconds)
+        .split('')
+        .map((c, i) =>
+          c === ':' ? (
+            <span key={i} className="colon">
+              :
+            </span>
+          ) : (
+            <span key={i} className="digit">
+              {c}
+            </span>
+          )
+        )}
+    </div>
+  )
+}
+
+// Live microphone level so trainers can see at a glance that their voice is being captured
+const METER_BARS = 24
+function MicMeter({ analyserRef, active }) {
+  const barsRef = useRef([])
+
+  useEffect(() => {
+    const bars = barsRef.current
+    const clear = () => bars.forEach((b) => b && b.classList.remove('on'))
+    const analyser = analyserRef.current
+    if (!active || !analyser) {
+      clear()
+      return
+    }
+    const buf = new Uint8Array(analyser.fftSize)
+    let smooth = 0
+    let raf
+    const loop = () => {
+      analyser.getByteTimeDomainData(buf)
+      let sum = 0
+      for (let i = 0; i < buf.length; i++) {
+        const v = (buf[i] - 128) / 128
+        sum += v * v
+      }
+      const level = Math.min(1, Math.sqrt(sum / buf.length) * 4)
+      smooth = Math.max(level, smooth * 0.88)
+      const lit = Math.round(smooth * METER_BARS)
+      bars.forEach((b, i) => b && b.classList.toggle('on', i < lit))
+      raf = requestAnimationFrame(loop)
+    }
+    loop()
+    return () => {
+      cancelAnimationFrame(raf)
+      clear()
+    }
+  }, [active, analyserRef])
+
+  return (
+    <div className="meter" aria-hidden="true">
+      {Array.from({ length: METER_BARS }, (_, i) => (
+        <span
+          key={i}
+          ref={(el) => (barsRef.current[i] = el)}
+          className={i > METER_BARS * 0.8 ? 'hot' : i > METER_BARS * 0.6 ? 'warm' : ''}
+          style={{ '--i': i }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function Hero({ tone, children }) {
+  return (
+    <section className="hero" data-tone={tone}>
+      <span className="hero-art" aria-hidden="true" />
+      {children}
+    </section>
+  )
+}
+
+function PermissionTile({ icon, tone, title, text, ok, label, doneLabel, onClick }) {
+  return (
+    <section className={`perm ${ok ? 'is-ok' : ''}`} data-tone={tone}>
+      <div className="perm-icon">{ok ? <CheckIcon /> : icon}</div>
+      <div>
+        <h2>{title}</h2>
+        <p>{text}</p>
+      </div>
+      <button className={`btn ${ok ? 'btn-ok' : 'btn-ink'}`} onClick={onClick} disabled={ok}>
+        {ok ? doneLabel : label}
+      </button>
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* App                                                                 */
+/* ------------------------------------------------------------------ */
 export default function App() {
   const [state, setState] = useState('permissions') // permissions | recording | paused | saved | error
   const [micOk, setMicOk] = useState(false)
@@ -25,6 +196,8 @@ export default function App() {
   const startedRef = useRef(false)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
+  const audioCtxRef = useRef(null)
+  const analyserRef = useRef(null)
   const [srcSize, setSrcSize] = useState(null)
   const actionsRef = useRef({})
 
@@ -84,8 +257,16 @@ export default function App() {
 
       // Mix system audio + mic into one track
       const ctx = new AudioContext()
+      audioCtxRef.current = ctx
       const dest = ctx.createMediaStreamDestination()
-      ctx.createMediaStreamSource(mic).connect(dest)
+      const micSource = ctx.createMediaStreamSource(mic)
+      micSource.connect(dest)
+      // Listen to the mic (not connected to speakers) to drive the level meter
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 256
+      micSource.connect(analyser)
+      analyserRef.current = analyser
+
       if (screen.getAudioTracks().length > 0) {
         ctx.createMediaStreamSource(new MediaStream(screen.getAudioTracks())).connect(dest)
       }
@@ -151,6 +332,9 @@ export default function App() {
     })
     streamsRef.current.forEach(stopStream)
     canvasRef.current?.stop()
+    analyserRef.current = null
+    audioCtxRef.current?.close()
+    audioCtxRef.current = null
     const path = await window.recorder.stop()
     setSavedPath(path)
     setState('saved')
@@ -186,173 +370,221 @@ export default function App() {
     []
   )
 
-  const btn = { padding: '10px 18px', fontSize: 15, cursor: 'pointer', margin: 4 }
-  const allowedBtn = {
-    ...btn,
-    background: '#d1fae5',
-    border: '1px solid #10b981',
-    cursor: 'default'
-  }
+  const ready = Number(micOk) + Number(screenOk)
+  const isLive = state === 'recording'
+  const isPaused = state === 'paused'
+
+  const chipLabel = {
+    permissions: `Setup ${ready} of 2`,
+    recording: 'Recording',
+    paused: 'Paused',
+    saved: 'Saved',
+    error: 'Needs attention'
+  }[state]
 
   return (
-    <div className="app">
+    <div className="app" data-state={state}>
+      <header className="topbar">
+        <div className="brand">
+          <span className="mark" aria-hidden="true" />
+          RecordRoom
+        </div>
+        <span className="chip">
+          <span className={`chip-dot ${isLive ? 'is-live' : ''}`} />
+          {chipLabel}
+        </span>
+      </header>
+
       {/* ---------- Permissions ---------- */}
       {state === 'permissions' && (
-        <div className="bento">
-          <section className="card card-yellow span-2 row-2">
-            <div>
-              <span className="eyebrow">Lecture recorder</span>
-              <h1 className="title" style={{ marginTop: 8 }}>
-                RecordRoom
-              </h1>
-            </div>
-            <p className="muted">
-              Allow microphone and screen recording. As soon as both are allowed, your lecture
-              starts recording and is saved on this computer.
+        <main className="view split">
+          <Hero tone="yellow">
+            <h1 className="display">Set up your recording</h1>
+            <p className="lede">
+              Allow your microphone and screen. Recording starts as soon as both are on, and the
+              video is saved on this computer.
             </p>
-          </section>
+          </Hero>
 
-          <section className="card span-2">
-            <div className="emoji">🎤</div>
-            <div>
-              <h2 className="heading">Microphone</h2>
-              <p className="muted">Captures your voice during the class.</p>
+          <section className="checklist">
+            <div
+              className="progress"
+              role="progressbar"
+              aria-label="Permissions allowed"
+              aria-valuemin={0}
+              aria-valuemax={2}
+              aria-valuenow={ready}
+            >
+              <span className={ready >= 1 ? 'on' : ''} />
+              <span className={ready >= 2 ? 'on' : ''} />
             </div>
-            <button
-              className={`btn ${micOk ? 'btn-done' : 'btn-yellow'}`}
+
+            <PermissionTile
+              tone="purple"
+              icon={<MicIcon />}
+              title="Microphone"
+              text="Captures your voice during the session."
+              ok={micOk}
+              label="Allow microphone"
+              doneLabel="Allowed"
               onClick={allowMic}
-              disabled={micOk}
-            >
-              {micOk ? '✓ Microphone allowed' : 'Allow microphone'}
-            </button>
-          </section>
-
-          <section className="card span-2">
-            <div className="emoji">🖥️</div>
-            <div>
-              <h2 className="heading">Screen recording</h2>
-              <p className="muted">Records everything on your screen, in any application.</p>
-            </div>
-            <button
-              className={`btn ${screenOk ? 'btn-done' : 'btn-yellow'}`}
+            />
+            <PermissionTile
+              tone="coral"
+              icon={<ScreenIcon />}
+              title="Screen recording"
+              text="Records your full screen, in any application."
+              ok={screenOk}
+              label="Allow screen"
+              doneLabel="Allowed"
               onClick={allowScreen}
-              disabled={screenOk}
-            >
-              {screenOk ? '✓ Screen recording allowed' : 'Allow screen recording'}
-            </button>
-          </section>
+            />
 
-          {permError && (
-            <section className="card card-grey span-4">
-              <p className="error-text">{permError}</p>
-            </section>
-          )}
+            {permError && (
+              <p className="alert" role="alert">
+                {permError}
+              </p>
+            )}
 
-          {!AUTO_START && micOk && screenOk && (
-            <section className="card card-coral span-4">
-              <h2 className="heading">Ready to go</h2>
-              <button className="btn btn-white" onClick={startRecording}>
-                Start recording
+            {!AUTO_START && micOk && screenOk && (
+              <button className="btn btn-coral btn-lg" onClick={startRecording}>
+                <RecordIcon size={20} /> Start recording
               </button>
-            </section>
-          )}
-        </div>
+            )}
+          </section>
+        </main>
       )}
 
       {/* ---------- Recording / Paused ---------- */}
-      {(state === 'recording' || state === 'paused') && (
-        <div className="bento">
-          <section className="card span-3 row-2">
-            <span className={`chip ${state === 'recording' ? 'chip-coral' : 'chip-purple'}`}>
-              <span className={`dot ${state === 'recording' ? 'dot-live' : ''}`} />
-              {state === 'recording' ? 'Recording' : 'Paused'}
-            </span>
-            <div className="timer-sm">{fmt(seconds)}</div>
-            <div className="preview">
+      {(isLive || isPaused) && (
+        <main className="view stage">
+          <section className="monitor">
+            <div className={`frame ${isLive ? 'is-live' : ''}`}>
               <video ref={videoRef} autoPlay muted playsInline />
-              {state === 'paused' && <div className="preview-paused">Paused</div>}
+              <span className="frame-tag">Live preview</span>
+              {isPaused && (
+                <div className="veil">
+                  <PauseIcon size={28} />
+                  Recording paused
+                </div>
+              )}
             </div>
-            <p className="muted">
-              {state === 'recording'
-                ? `Live preview. Recording at ${OUT_W}×${OUT_H} (your screen is ${srcSize?.width}×${srcSize?.height}).`
-                : 'Recording is paused. Click Resume to continue.'}
+            <p className="note">
+              {isLive
+                ? `Recording at ${OUT_W}×${OUT_H}. Your screen is ${srcSize?.width}×${srcSize?.height}.`
+                : 'Nothing is being recorded. Click Resume to continue.'}
             </p>
           </section>
 
-          <section className="card card-purple">
-            <span className="eyebrow">Source</span>
-            <h2 className="heading">Full screen</h2>
-            <p className="muted">Mic + system audio</p>
-          </section>
+          <aside className="console">
+            <div className="clock-card">
+              <div className="live">
+                <span className={`live-dot ${isPaused ? 'is-paused' : ''}`} />
+                {isLive ? 'Recording' : 'Paused'}
+              </div>
+              <Clock seconds={seconds} paused={isPaused} />
+              <div className="meter-wrap">
+                <MicMeter analyserRef={analyserRef} active={isLive} />
+                <span className="meter-label">Microphone level</span>
+              </div>
+            </div>
 
-          <section className="card card-grey">
-            <span className="eyebrow">Saving to</span>
-            <p className="path">Videos / RecordRoom</p>
-          </section>
+            <dl className="facts">
+              <div className="fact">
+                <dt>Source</dt>
+                <dd>Full screen, mic and system sound</dd>
+              </div>
+              <div className="fact">
+                <dt>Saves to</dt>
+                <dd>Videos / RecordRoom</dd>
+              </div>
+            </dl>
 
-          <section className="card span-4">
-            <div className="btn-row">
-              {state === 'recording' ? (
-                <button className="btn btn-purple" onClick={pause}>
-                  Pause
+            <div className="controls">
+              {isLive ? (
+                <button className="btn btn-purple btn-lg" onClick={pause}>
+                  <PauseIcon size={18} /> Pause
                 </button>
               ) : (
-                <button className="btn btn-yellow" onClick={resume}>
-                  Resume
+                <button className="btn btn-yellow btn-lg" onClick={resume}>
+                  <PlayIcon size={18} /> Resume
                 </button>
               )}
-              <button className="btn btn-coral" onClick={stop}>
-                Stop and save
+              <button className="btn btn-coral btn-lg" onClick={stop}>
+                <StopIcon size={18} /> Stop and save
               </button>
             </div>
-          </section>
-        </div>
+          </aside>
+        </main>
       )}
 
       {/* ---------- Saved ---------- */}
       {state === 'saved' && (
-        <div className="bento">
-          <section className="card card-yellow span-2">
-            <div className="emoji">✅</div>
+        <main className="view split">
+          <Hero tone="purple">
+            <span className="badge">
+              <CheckIcon size={30} strokeWidth={3} />
+            </span>
+            <div className="hero-copy">
+              <h1 className="display">Session saved</h1>
+              <p className="lede">
+                You recorded {fmt(seconds)}. The video is ready on this computer.
+              </p>
+            </div>
+          </Hero>
+
+          <section className="file-card">
             <div>
-              <h1 className="title" style={{ fontSize: 28 }}>
-                Recording saved
-              </h1>
-              <p className="muted">Duration {fmt(seconds)}</p>
+              <span className="label">Your video</span>
+              <h2 className="file-name">{fileName(savedPath)}</h2>
             </div>
-          </section>
-
-          <section className="card span-2">
-            <span className="eyebrow">File location</span>
-            <p className="path">{savedPath}</p>
-          </section>
-
-          <section className="card span-4">
+            <p className="file-path">{savedPath}</p>
+            <div className="stats">
+              <div className="stat">
+                <b>{fmt(seconds)}</b>
+                <span>Length</span>
+              </div>
+              <div className="stat">
+                <b>
+                  {OUT_W}×{OUT_H}
+                </b>
+                <span>Quality</span>
+              </div>
+              <div className="stat">
+                <b>WebM</b>
+                <span>Format</span>
+              </div>
+            </div>
             <div className="btn-row">
-              <button className="btn btn-yellow" onClick={() => window.recorder.reveal(savedPath)}>
-                Show in folder
+              <button
+                className="btn btn-ink btn-lg"
+                onClick={() => window.recorder.reveal(savedPath)}
+              >
+                <FolderIcon size={18} /> Show in folder
               </button>
-              <button className="btn btn-ghost" onClick={startRecording}>
-                Record again
+              <button className="btn btn-soft btn-lg" onClick={startRecording}>
+                <RecordIcon size={18} /> Record again
               </button>
             </div>
           </section>
-        </div>
+        </main>
       )}
 
       {/* ---------- Error ---------- */}
       {state === 'error' && (
-        <div className="bento">
-          <section className="card card-coral span-4">
-            <h2 className="heading">Something went wrong</h2>
-            <p className="muted">{error}</p>
-            <div className="btn-row">
-              <button className="btn btn-white" onClick={startRecording}>
-                Try again
-              </button>
+        <main className="view">
+          <Hero tone="coral">
+            <div className="hero-copy">
+              <h1 className="display">Recording didn’t start</h1>
+              <p className="lede">{error || 'Something unexpected happened.'}</p>
+              <div className="btn-row">
+                <button className="btn btn-ink btn-lg" onClick={startRecording}>
+                  Try again
+                </button>
+              </div>
             </div>
-          </section>
-        </div>
+          </Hero>
+        </main>
       )}
     </div>
   )
