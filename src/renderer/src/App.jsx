@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import './assets/preview.css'
+import { OUT_W, OUT_H, createCanvasStream, screenConstraints } from './capture'
 
 const AUTO_START = true // true: record as soon as both permissions are allowed. false: show a Start button.
 
@@ -21,6 +23,10 @@ export default function App() {
   const secondsRef = useRef(0)
   const timerRef = useRef(null)
   const startedRef = useRef(false)
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const [srcSize, setSrcSize] = useState(null)
+  const actionsRef = useRef({})
 
   const tick = () => {
     timerRef.current = setInterval(() => {
@@ -34,10 +40,7 @@ export default function App() {
 
   const getScreenStream = async () => {
     const sourceId = await window.recorder.getSource()
-    const constraints = (withAudio) => ({
-      audio: withAudio ? { mandatory: { chromeMediaSource: 'desktop' } } : false,
-      video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId } }
-    })
+    const constraints = (withAudio) => screenConstraints(sourceId, withAudio)
     try {
       return await navigator.mediaDevices.getUserMedia(constraints(true)) // screen + system audio
     } catch {
@@ -86,8 +89,15 @@ export default function App() {
       if (screen.getAudioTracks().length > 0) {
         ctx.createMediaStreamSource(new MediaStream(screen.getAudioTracks())).connect(dest)
       }
+      // Draw the screen onto a 1920x1080 canvas and record that (always 1080p)
+      const canvas = await createCanvasStream(screen)
+      canvasRef.current = canvas
+      setSrcSize(canvas.source)
+      console.log(
+        `Screen is ${canvas.source.width}x${canvas.source.height}, recording ${OUT_W}x${OUT_H}`
+      )
       const combined = new MediaStream([
-        ...screen.getVideoTracks(),
+        ...canvas.stream.getVideoTracks(),
         ...dest.stream.getAudioTracks()
       ])
 
@@ -95,7 +105,7 @@ export default function App() {
 
       const mr = new MediaRecorder(combined, {
         mimeType: 'video/webm;codecs=vp9,opus',
-        videoBitsPerSecond: 1_500_000
+        videoBitsPerSecond: 5_000_000 // 1080p needs more than 1.5 Mbps
       })
       mr.ondataavailable = async (e) => {
         if (e.data.size > 0) window.recorder.chunk(await e.data.arrayBuffer())
@@ -140,10 +150,41 @@ export default function App() {
       mrRef.current.stop()
     })
     streamsRef.current.forEach(stopStream)
+    canvasRef.current?.stop()
     const path = await window.recorder.stop()
     setSavedPath(path)
     setState('saved')
   }
+
+  // Keep the latest handlers for the island buttons
+  useEffect(() => {
+    actionsRef.current = { pause, resume, stop }
+  })
+
+  // Live preview: attach the screen stream to the <video>
+  useEffect(() => {
+    if ((state === 'recording' || state === 'paused') && videoRef.current) {
+      videoRef.current.srcObject = streamsRef.current[0] || null
+    }
+  }, [state])
+
+  // Tell the island the current state + time
+  useEffect(() => {
+    window.recorder.sendStatus({ state, seconds })
+  }, [state, seconds])
+
+  // Island buttons: pause / resume / stop
+  useEffect(
+    () =>
+      window.recorder.onIslandAction((action) => {
+        const mr = mrRef.current
+        if (!mr) return
+        if (action === 'pause' && mr.state === 'recording') actionsRef.current.pause()
+        if (action === 'resume' && mr.state === 'paused') actionsRef.current.resume()
+        if (action === 'stop' && mr.state !== 'inactive') actionsRef.current.stop()
+      }),
+    []
+  )
 
   const btn = { padding: '10px 18px', fontSize: 15, cursor: 'pointer', margin: 4 }
   const allowedBtn = {
@@ -226,10 +267,14 @@ export default function App() {
               <span className={`dot ${state === 'recording' ? 'dot-live' : ''}`} />
               {state === 'recording' ? 'Recording' : 'Paused'}
             </span>
-            <div className="timer">{fmt(seconds)}</div>
+            <div className="timer-sm">{fmt(seconds)}</div>
+            <div className="preview">
+              <video ref={videoRef} autoPlay muted playsInline />
+              {state === 'paused' && <div className="preview-paused">Paused</div>}
+            </div>
             <p className="muted">
               {state === 'recording'
-                ? 'Everything on your screen is being recorded.'
+                ? `Live preview. Recording at ${OUT_W}×${OUT_H} (your screen is ${srcSize?.width}×${srcSize?.height}).`
                 : 'Recording is paused. Click Resume to continue.'}
             </p>
           </section>

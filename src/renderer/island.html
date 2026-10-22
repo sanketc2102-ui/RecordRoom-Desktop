@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>RecordRoom</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    />
+  </head>
+  <body>
+    <div class="island">
+      <span class="idot" id="dot"></span>
+      <span class="itime" id="time">00:00:00</span>
+      <span class="ispacer"></span>
+      <button class="ibtn" id="toggle" title="Pause"></button>
+      <button class="ibtn ibtn-done" id="stop" title="Done recording">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="3.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+        Done
+      </button>
+    </div>
+    <script type="module" src="/src/island.js"></script>
+  </body>
+</html>

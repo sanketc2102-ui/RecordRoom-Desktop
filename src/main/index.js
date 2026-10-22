@@ -10,6 +10,7 @@ import {
 } from 'electron'
 import { join } from 'path'
 import fs from 'fs'
+import { setupIsland } from './island'
 
 let win = null
 let stream = null
@@ -24,9 +25,12 @@ function createWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      backgroundThrottling: false // keeps the timer + recorder accurate while the window is minimized
     }
   })
+
+  setupIsland(win)
 
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
