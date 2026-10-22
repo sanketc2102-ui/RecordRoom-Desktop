@@ -1,16 +1,11 @@
 import '@fontsource-variable/figtree'
-import './assets/island.css'
-import './assets/island.css'
+import './island.css'
+import { fmt } from '../utils/format'
 
 const PAUSE_ICON =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg>'
 const PLAY_ICON =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z"/></svg>'
-
-const fmt = (s) =>
-  [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60]
-    .map((n) => String(n).padStart(2, '0'))
-    .join(':')
 
 const dot = document.getElementById('dot')
 const time = document.getElementById('time')

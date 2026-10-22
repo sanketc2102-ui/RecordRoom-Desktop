@@ -1,9 +1,7 @@
 // Guaranteed 1080p recording.
 // Chromium's screen capture gives you the screen's native size (and won't upscale a small
 // screen), so instead we draw the screen onto a fixed 1920x1080 canvas and record the canvas.
-export const OUT_W = 1920
-export const OUT_H = 1080
-const FPS = 30
+import { OUT_W, OUT_H, FPS } from '../config/constants'
 
 export const screenConstraints = (sourceId, withAudio) => ({
   audio: withAudio ? { mandatory: { chromeMediaSource: 'desktop' } } : false,
